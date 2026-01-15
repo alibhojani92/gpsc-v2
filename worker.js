@@ -1,35 +1,37 @@
 export default {
   async fetch(request, env) {
-    // Only accept Telegram POST requests
     if (request.method !== "POST") {
       return new Response("OK");
     }
 
     const update = await request.json();
 
-    if (!update.message || !update.message.text) {
-      return new Response("OK");
-    }
+    if (update.message && update.message.text === "/start") {
+      const chatId = update.message.chat.id;
 
-    const chatId = update.message.chat.id;
-    const text = update.message.text;
+      const messageText =
+        "Welcome Dr Arzoo Fatema ❤️🌺\n\n" +
+        "Please select an option 👇";
 
-    // /start command
-    if (text === "/start") {
-      const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`;
-
-      const payload = {
-        chat_id: chatId,
-        text: "✅ GPSC V2 Bot is LIVE!\nWelcome 👋",
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: "📝 Start Exam", callback_data: "start_exam" }],
+          [{ text: "📊 My Result", callback_data: "my_result" }],
+          [{ text: "ℹ️ Help", callback_data: "help" }]
+        ]
       };
 
-      await fetch(url, {
+      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: messageText,
+          reply_markup: keyboard
+        })
       });
     }
 
     return new Response("OK");
-  },
+  }
 };
