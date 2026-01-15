@@ -1,172 +1,194 @@
 export default {
-  async fetch(request, env) {
-    if (request.method !== "POST") {
-      return new Response("OK");
-    }
+  async fetch(req, env) {
+    if (req.method !== "POST") return new Response("OK");
 
-    const update = await request.json();
-    const token = env.BOT_TOKEN;
-    const adminId = Number(env.ADMIN_ID);
+    const update = await req.json();
+    const TOKEN = env.BOT_TOKEN;
+    const ADMIN = Number(env.ADMIN_ID);
+    const GROUP = Number(env.GROUP_ID);
+    const db = env.DB;
 
-    const sendMessage = async (chatId, text, replyMarkup = null) => {
-      const body = {
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-      };
-      if (replyMarkup) body.reply_markup = replyMarkup;
-
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const api = (method, body) =>
+      fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-    };
 
-    const now = Date.now();
+    const send = (chat, text, kb = null) =>
+      api("sendMessage", {
+        chat_id: chat,
+        text,
+        parse_mode: "HTML",
+        reply_markup: kb,
+      });
 
-    /* =====================
-       IN-MEMORY STORE
-       (Later D1 replace)
-    ===================== */
-    globalThis.reading ??= {};
-    const reading = globalThis.reading;
+    const isAdmin = (id) => id === ADMIN;
+    const today = () => new Date().toISOString().slice(0, 10);
 
-    /* =====================
-       CALLBACK BUTTONS
-    ===================== */
-    if (update.callback_query) {
-      const cq = update.callback_query;
-      const userId = cq.from.id;
-      const chatId = cq.message.chat.id;
-      const data = cq.data;
+    /* ================= START ================= */
 
-      if (userId === adminId) {
-        await sendMessage(chatId, "🛠 Admin action ignored");
-        return new Response("OK");
+    if (update.message?.text) {
+      const msg = update.message;
+      const text = msg.text.toLowerCase();
+      const uid = msg.from.id;
+      const chat = msg.chat.id;
+
+      /* -------- /start -------- */
+      if (text === "/start") {
+        return send(
+          chat,
+          "🌺 Dr. Arzoo Fatema 🌺\nWelcome ❤️\n\nChoose an option 👇",
+          {
+            inline_keyboard: [
+              [{ text: "📖 Start Reading", callback_data: "READ" }],
+              [{ text: "⏹ Stop Reading", callback_data: "STOP" }],
+              [{ text: "📝 Daily Test", callback_data: "DT" }],
+              [{ text: "📅 Weekly Test", callback_data: "WT" }],
+              [{ text: "📊 Daily Report", callback_data: "DR" }],
+              [{ text: "📈 Weekly Report", callback_data: "WR" }],
+              [{ text: "📌 Stats", callback_data: "STATS" }],
+              [{ text: "⚠️ Weak Subjects", callback_data: "WEAK" }],
+            ],
+          }
+        );
       }
 
-      if (data === "START_READ") {
-        if (reading[userId]) {
-          await sendMessage(
-            chatId,
-            "🌺 Dr. Arzoo Fatema 🌺\n⚠️ Reading already running\nUse Stop when finished"
+      /* -------- READ -------- */
+      if (text === "/read") {
+        if (isAdmin(uid)) return send(chat, "🛠 Admin read ignored");
+
+        const exist = await db
+          .prepare("SELECT * FROM reading_sessions WHERE user_id=?")
+          .bind(uid)
+          .first();
+
+        if (exist)
+          return send(
+            chat,
+            "🌺 Dr. Arzoo Fatema 🌺\n⚠️ Reading already running"
           );
-        } else {
-          reading[userId] = now;
-          await sendMessage(
-            chatId,
-            "🌺 Dr. Arzoo Fatema 🌺\n📖 Reading started\n\n🎯 Target: 08:00\nStay focused 💪"
-          );
-          await sendMessage(
-            adminId,
-            "🛠 Admin Panel\nStudent started reading"
-          );
-        }
+
+        await db
+          .prepare(
+            "INSERT INTO reading_sessions (user_id,start_time) VALUES (?,?)"
+          )
+          .bind(uid, Date.now())
+          .run();
+
+        await send(
+          chat,
+          "🌺 Dr. Arzoo Fatema 🌺\n📖 Reading started\n🎯 Target: 08:00"
+        );
+        return send(ADMIN, "🛠 Admin\nStudent started reading");
       }
 
-      if (data === "STOP_READ") {
-        if (!reading[userId]) {
-          await sendMessage(
-            chatId,
+      /* -------- STOP -------- */
+      if (text === "/stop") {
+        if (isAdmin(uid)) return send(chat, "🛠 Admin stop ignored");
+
+        const sess = await db
+          .prepare("SELECT * FROM reading_sessions WHERE user_id=?")
+          .bind(uid)
+          .first();
+
+        if (!sess)
+          return send(
+            chat,
             "🌺 Dr. Arzoo Fatema 🌺\n⚠️ No active reading session"
           );
-        } else {
-          const mins = Math.floor((now - reading[userId]) / 60000);
-          delete reading[userId];
 
-          await sendMessage(
-            chatId,
-            `🌺 Dr. Arzoo Fatema 🌺\n⏹ Reading stopped\n\n📘 Today: ${mins} min\n⏳ Remaining: ${Math.max(480 - mins, 0)} min`
-          );
-          await sendMessage(
-            adminId,
-            `🛠 Admin Panel\nStudent stopped reading\nTime logged: ${mins} min`
-          );
-        }
+        const mins = Math.floor((Date.now() - sess.start_time) / 60000);
+
+        await db
+          .prepare("DELETE FROM reading_sessions WHERE user_id=?")
+          .bind(uid)
+          .run();
+
+        await db
+          .prepare(
+            "INSERT INTO reading_log (user_id,date,minutes) VALUES (?,?,?) \
+             ON CONFLICT(user_id,date) DO UPDATE SET minutes=minutes+excluded.minutes"
+          )
+          .bind(uid, today(), mins)
+          .run();
+
+        await send(
+          chat,
+          `🌺 Dr. Arzoo Fatema 🌺\n⏹ Reading stopped\n📘 Today: ${mins} min`
+        );
+        return send(
+          ADMIN,
+          `🛠 Admin\nStudent stopped reading\nTime: ${mins} min`
+        );
       }
 
-      return new Response("OK");
-    }
+      /* -------- REPORT -------- */
+      if (text === "/report") {
+        const r = await db
+          .prepare(
+            "SELECT SUM(minutes) as m FROM reading_log WHERE user_id=? AND date=?"
+          )
+          .bind(uid, today())
+          .first();
 
-    /* =====================
-       TEXT MESSAGES
-    ===================== */
-    if (!update.message || !update.message.text) {
-      return new Response("OK");
-    }
-
-    const msg = update.message;
-    const text = msg.text.toLowerCase();
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-
-    /* ===== /start ===== */
-    if (text === "/start") {
-      await sendMessage(
-        chatId,
-        "🌺 Dr. Arzoo Fatema 🌺\nWelcome ❤️\n\nChoose an option 👇",
-        {
-          inline_keyboard: [
-            [{ text: "📖 Start Reading", callback_data: "START_READ" }],
-            [{ text: "⏹ Stop Reading", callback_data: "STOP_READ" }],
-            [{ text: "📝 Daily Test", callback_data: "DAILY_TEST" }],
-            [{ text: "📊 Report", callback_data: "REPORT" }],
-          ],
-        }
-      );
-    }
-
-    /* ===== /read ===== */
-    if (text === "/read") {
-      if (userId === adminId) {
-        await sendMessage(chatId, "🛠 Admin read ignored");
-        return new Response("OK");
+        return send(
+          chat,
+          `🌺 Dr. Arzoo Fatema 🌺\n📊 Daily Report\n📘 Study: ${
+            r?.m || 0
+          } min`
+        );
       }
 
-      if (reading[userId]) {
-        await sendMessage(
-          chatId,
-          "🌺 Dr. Arzoo Fatema 🌺\n⚠️ Reading already running\nUse Stop when finished"
-        );
-      } else {
-        reading[userId] = now;
-        await sendMessage(
-          chatId,
-          "🌺 Dr. Arzoo Fatema 🌺\n📖 Reading started\n\n🎯 Target: 08:00\nStay focused 💪"
-        );
-        await sendMessage(
-          adminId,
-          "🛠 Admin Panel\nStudent started reading"
+      /* -------- STATS -------- */
+      if (text === "/stats") {
+        const r = await db
+          .prepare(
+            "SELECT SUM(minutes) as m FROM reading_log WHERE user_id=?"
+          )
+          .bind(uid)
+          .first();
+
+        return send(
+          chat,
+          `🌺 Dr. Arzoo Fatema 🌺\n📌 Overall Stats\n📘 Total Study: ${
+            r?.m || 0
+          } min`
         );
       }
     }
 
-    /* ===== /stop ===== */
-    if (text === "/stop") {
-      if (userId === adminId) {
-        await sendMessage(chatId, "🛠 Admin stop ignored");
-        return new Response("OK");
-      }
+    /* ================= CALLBACKS ================= */
 
-      if (!reading[userId]) {
-        await sendMessage(
-          chatId,
-          "🌺 Dr. Arzoo Fatema 🌺\n⚠️ No active reading session"
-        );
-      } else {
-        const mins = Math.floor((now - reading[userId]) / 60000);
-        delete reading[userId];
+    if (update.callback_query) {
+      const cq = update.callback_query;
+      const uid = cq.from.id;
+      const chat = cq.message.chat.id;
+      const data = cq.data;
 
-        await sendMessage(
-          chatId,
-          `🌺 Dr. Arzoo Fatema 🌺\n⏹ Reading stopped\n\n📘 Today: ${mins} min\n⏳ Remaining: ${Math.max(480 - mins, 0)} min`
+      if (data === "READ")
+        return this.fetch(
+          new Request(req.url, {
+            method: "POST",
+            body: JSON.stringify({ message: { text: "/read", from: { id: uid }, chat: { id: chat } } }),
+          }),
+          env
         );
-        await sendMessage(
-          adminId,
-          `🛠 Admin Panel\nStudent stopped reading\nTime logged: ${mins} min`
+
+      if (data === "STOP")
+        return this.fetch(
+          new Request(req.url, {
+            method: "POST",
+            body: JSON.stringify({ message: { text: "/stop", from: { id: uid }, chat: { id: chat } } }),
+          }),
+          env
         );
-      }
+
+      if (data === "DR")
+        return send(chat, "Use /report");
+
+      if (data === "STATS")
+        return send(chat, "Use /stats");
     }
 
     return new Response("OK");
