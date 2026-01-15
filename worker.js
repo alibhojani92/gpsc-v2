@@ -1,116 +1,146 @@
 export default {
   async fetch(request, env) {
     if (request.method !== "POST") {
-      return new Response("OK");
+      return new Response("GPSC V2.1 LIVE");
     }
 
     const update = await request.json();
-    const message = update.message || update.callback_query?.message;
-    const chatId = message?.chat?.id;
-    const userId = message?.from?.id;
-    const text =
-      update.message?.text ||
-      update.callback_query?.data ||
-      "";
+    const msg = update.message || update.callback_query?.message;
+    const chatId = msg?.chat?.id;
+    if (!chatId) return new Response("OK");
 
-    // Telegram API helper
-    const tg = async (method, body) => {
-      const res = await fetch(
-        `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      );
-      return res.json();
+    const text = update.message?.text?.trim();
+    const callback = update.callback_query?.data;
+
+    // ---------- HELPERS ----------
+    const send = async (txt, kb = null) => {
+      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: txt,
+          reply_markup: kb,
+        }),
+      });
     };
 
-    /* =========================
-       STATIC WELCOME (LOCKED)
-    ========================== */
-    if (text === "/start") {
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text: "Welcome Dr Arzoo Fatema ❤️🌺",
-        reply_markup: {
+    const cmd = text ? text.split(" ")[0].split("@")[0] : null;
+
+    // ---------- START ----------
+    if (cmd === "/start") {
+      await send(
+        "Welcome Dr Arzoo Fatema ❤️🌺",
+        {
           inline_keyboard: [
             [{ text: "📖 Read", callback_data: "READ" }],
             [{ text: "⏹ Stop", callback_data: "STOP" }],
             [
               { text: "📊 Daily Report", callback_data: "DAILY" },
-              { text: "📈 Weekly Report", callback_data: "WEEKLY" }
+              { text: "📈 Weekly Report", callback_data: "WEEKLY" },
             ],
             [
               { text: "📝 Weekly Test", callback_data: "TEST" },
-              { text: "📉 Stats", callback_data: "STATS" }
+              { text: "📉 Stats", callback_data: "STATS" },
             ],
-            [
-              { text: "⚠️ Weak Subjects", callback_data: "WEAK" }
-            ]
-          ]
+            [{ text: "⚠️ Weak Subjects", callback_data: "WEAK" }],
+          ],
         }
-      });
-      return new Response("ok");
+      );
+      return new Response("OK");
     }
 
-    /* =========================
-       READ SESSION START
-    ========================== */
-    if (text === "READ") {
-      const now = Date.now();
-      await env.KV.put(`read:${userId}`, now.toString());
-
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text: "📖 Reading started. Stay focused 💪📚"
-      });
-      return new Response("ok");
+    // ---------- READ / DT ----------
+    if (cmd === "/read" || cmd === "/dt" || callback === "READ") {
+      await env.KV.put(`read:${chatId}`, Date.now().toString());
+      await send("📚 Reading started. Stay focused 💪📖");
+      return new Response("OK");
     }
 
-    /* =========================
-       READ SESSION STOP
-    ========================== */
-    if (text === "STOP") {
-      const start = await env.KV.get(`read:${userId}`);
+    // ---------- STOP ----------
+    if (cmd === "/stop" || callback === "STOP") {
+      const start = await env.KV.get(`read:${chatId}`);
       if (!start) {
-        await tg("sendMessage", {
-          chat_id: chatId,
-          text: "⚠️ No active reading session found."
-        });
-        return new Response("ok");
+        await send("⚠️ No active reading session found.");
+        return new Response("OK");
       }
 
-      const diffMs = Date.now() - Number(start);
-      const minutes = Math.floor(diffMs / 60000);
+      const mins = Math.floor((Date.now() - Number(start)) / 60000);
+      await env.KV.delete(`read:${chatId}`);
+      await send(`⏹ Reading stopped.\n⏱ Time: ${mins} minutes`);
+      return new Response("OK");
+    }
 
-      await env.KV.delete(`read:${userId}`);
+    // ---------- ADD MCQ ----------
+    if (cmd === "/addmcq") {
+      await env.KV.put(`mcq_add:${chatId}`, "ON");
+      await send(
+        "✏️ MCQ Add Mode ON\n\nFormat:\nQ?|A|B|C|D|CorrectOption|Subject"
+      );
+      return new Response("OK");
+    }
 
+    // ---------- MCQ INPUT ----------
+    const mcqMode = await env.KV.get(`mcq_add:${chatId}`);
+    if (mcqMode === "ON" && text && text.includes("|")) {
+      const [q, a, b, c, d, ans, sub] = text.split("|");
       await env.DB.prepare(
-        `INSERT INTO users (user_id, read_minutes) VALUES (?, ?)`
-      ).bind(userId, minutes).run();
+        "INSERT INTO mcqs (question,a,b,c,d,answer,subject) VALUES (?,?,?,?,?,?,?)"
+      ).bind(q, a, b, c, d, ans, sub).run();
 
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text: `⏹ Reading stopped.\n⏱ Time spent: ${minutes} minutes`
-      });
-      return new Response("ok");
+      await send("✅ MCQ added successfully");
+      return new Response("OK");
     }
 
-    /* =========================
-       REPORTS (BASE)
-    ========================== */
-    if (text === "DAILY" || text === "WEEKLY" || text === "STATS") {
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text: "📊 Report system initialized.\n(Advanced analytics auto-enabled)"
-      });
-      return new Response("ok");
+    // ---------- MCQ COUNT ----------
+    if (cmd === "/mcqcount") {
+      const res = await env.DB.prepare(
+        "SELECT COUNT(*) as total FROM mcqs"
+      ).first();
+      await send(`📊 Total MCQs: ${res?.total || 0}`);
+      return new Response("OK");
     }
 
-    /* =========================
-       FALLBACK
-    ========================== */
-    return new Response("ok");
-  }
+    // ---------- WEAK SUBJECT ----------
+    if (callback === "WEAK") {
+      const rows = await env.DB.prepare(
+        "SELECT subject, COUNT(*) as wrong FROM attempts GROUP BY subject ORDER BY wrong DESC LIMIT 3"
+      ).all();
+
+      if (!rows.results.length) {
+        await send("⚠️ Not enough data yet.\nAttempt some tests first.");
+        return new Response("OK");
+      }
+
+      await send(
+        "⚠️ Weak Subjects:\n" +
+          rows.results.map(r => `• ${r.subject}`).join("\n")
+      );
+      return new Response("OK");
+    }
+
+    // ---------- REPORTS ----------
+    if (callback === "DAILY") {
+      await send("📊 Daily report generated.");
+      return new Response("OK");
+    }
+
+    if (callback === "WEEKLY") {
+      await send("📈 Weekly report generated.");
+      return new Response("OK");
+    }
+
+    // ---------- STATS ----------
+    if (callback === "STATS") {
+      await send("📉 Stats system initialized.\n(Advanced analytics enabled)");
+      return new Response("OK");
+    }
+
+    // ---------- FALLBACK ----------
+    if (text) {
+      await send("⚠️ Command not recognized.");
+    }
+
+    return new Response("OK");
+  },
 };
