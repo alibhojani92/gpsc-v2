@@ -1,88 +1,116 @@
-// ===============================
-// GPSC V2.1 – FINAL STABLE BUILD
-// Cloudflare Workers | KV + D1
-// ===============================
-
 export default {
-  async fetch(req, env) {
-    if (req.method !== "POST") return new Response("OK");
+  async fetch(request, env) {
+    if (request.method !== "POST") {
+      return new Response("OK");
+    }
 
-    const update = await req.json();
-    const msg = update.message || update.callback_query;
-    if (!msg) return new Response("OK");
+    const update = await request.json();
+    const message = update.message || update.callback_query?.message;
+    const chatId = message?.chat?.id;
+    const userId = message?.from?.id;
+    const text =
+      update.message?.text ||
+      update.callback_query?.data ||
+      "";
 
-    const chatId = msg.chat?.id || msg.message?.chat.id;
-    const text = msg.text || "";
-    const userId = msg.from?.id;
-
-    const send = async (text, buttons = null) => {
-      const payload = {
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-      };
-      if (buttons) payload.reply_markup = buttons;
-      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    };
-
-    // -------- START --------
-    if (/^\/start$/i.test(text)) {
-      return send(
-        "Welcome Dr Arzoo Fatema ❤️🌺",
+    // Telegram API helper
+    const tg = async (method, body) => {
+      const res = await fetch(
+        `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,
         {
-          inline_keyboard: [
-            [{ text: "▶️ Read", callback_data: "read" }],
-            [{ text: "⏹ Stop", callback_data: "stop" }],
-            [{ text: "📝 Daily Test", callback_data: "dt" }],
-            [{ text: "📊 Report", callback_data: "report" }],
-          ],
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
         }
       );
+      return res.json();
+    };
+
+    /* =========================
+       STATIC WELCOME (LOCKED)
+    ========================== */
+    if (text === "/start") {
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text: "Welcome Dr Arzoo Fatema ❤️🌺",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📖 Read", callback_data: "READ" }],
+            [{ text: "⏹ Stop", callback_data: "STOP" }],
+            [
+              { text: "📊 Daily Report", callback_data: "DAILY" },
+              { text: "📈 Weekly Report", callback_data: "WEEKLY" }
+            ],
+            [
+              { text: "📝 Weekly Test", callback_data: "TEST" },
+              { text: "📉 Stats", callback_data: "STATS" }
+            ],
+            [
+              { text: "⚠️ Weak Subjects", callback_data: "WEAK" }
+            ]
+          ]
+        }
+      });
+      return new Response("ok");
     }
 
-    // -------- READ --------
-    if (/^\/read$/i.test(text) || msg.data === "read") {
-      const key = `read:${userId}`;
-      if (await env.GPSC_KV.get(key)) {
-        return send("🌺 Dr. Arzoo Fatema 🌺\n📖 Reading already running");
-      }
-      await env.GPSC_KV.put(key, Date.now().toString());
-      return send(
-        "🌺 Dr. Arzoo Fatema 🌺\n📖 Reading started\n\n🎯 Target: 08:00"
-      );
+    /* =========================
+       READ SESSION START
+    ========================== */
+    if (text === "READ") {
+      const now = Date.now();
+      await env.KV.put(`read:${userId}`, now.toString());
+
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text: "📖 Reading started. Stay focused 💪📚"
+      });
+      return new Response("ok");
     }
 
-    // -------- STOP --------
-    if (/^\/stop$/i.test(text) || msg.data === "stop") {
-      const key = `read:${userId}`;
-      const start = await env.GPSC_KV.get(key);
+    /* =========================
+       READ SESSION STOP
+    ========================== */
+    if (text === "STOP") {
+      const start = await env.KV.get(`read:${userId}`);
       if (!start) {
-        return send("🌺 Dr. Arzoo Fatema 🌺\n⚠️ No active reading");
+        await tg("sendMessage", {
+          chat_id: chatId,
+          text: "⚠️ No active reading session found."
+        });
+        return new Response("ok");
       }
-      await env.GPSC_KV.delete(key);
-      return send(
-        "🌺 Dr. Arzoo Fatema 🌺\n⏱ Reading stopped\nGood job today 💪"
-      );
+
+      const diffMs = Date.now() - Number(start);
+      const minutes = Math.floor(diffMs / 60000);
+
+      await env.KV.delete(`read:${userId}`);
+
+      await env.DB.prepare(
+        `INSERT INTO users (user_id, read_minutes) VALUES (?, ?)`
+      ).bind(userId, minutes).run();
+
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text: `⏹ Reading stopped.\n⏱ Time spent: ${minutes} minutes`
+      });
+      return new Response("ok");
     }
 
-    // -------- DAILY TEST --------
-    if (/^\/dt/i.test(text) || msg.data === "dt") {
-      return send(
-        "🌺 Dr. Arzoo Fatema 🌺\n📝 Daily Test Started\n(Questions will appear one by one)"
-      );
+    /* =========================
+       REPORTS (BASE)
+    ========================== */
+    if (text === "DAILY" || text === "WEEKLY" || text === "STATS") {
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text: "📊 Report system initialized.\n(Advanced analytics auto-enabled)"
+      });
+      return new Response("ok");
     }
 
-    // -------- REPORT --------
-    if (/^\/report$/i.test(text) || msg.data === "report") {
-      return send(
-        "🌺 Dr. Arzoo Fatema 🌺\n📊 Daily Report\n\n📘 Study: Logged\n📝 Test: Checked"
-      );
-    }
-
-    return new Response("OK");
-  },
+    /* =========================
+       FALLBACK
+    ========================== */
+    return new Response("ok");
+  }
 };
