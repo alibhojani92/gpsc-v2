@@ -1,0 +1,6 @@
+name = "gpsc-reading-bot"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+BOT_TOKEN = "8350086915:AAGtzNoCW-zqJEZlnS8cnEiszDFaaWy3KVM"
