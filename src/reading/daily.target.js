@@ -1,29 +1,49 @@
 // src/reading/daily.target.js
 
-/**
- * Daily Reading Target Utilities
- */
-
-export const DAILY_TARGET_HOURS = 8;
-export const DAILY_TARGET_MINUTES = DAILY_TARGET_HOURS * 60;
+const DEFAULT_TARGET_HOURS = 8;
+const MINUTES_IN_HOUR = 60;
 
 /**
- * Get total daily target in minutes
+ * Get default daily target in minutes
  */
-export function getDailyTargetMinutes() {
-  return DAILY_TARGET_MINUTES;
+export function getDefaultTargetMinutes() {
+  return DEFAULT_TARGET_HOURS * MINUTES_IN_HOUR;
+}
+
+/**
+ * Convert minutes to readable format (HH:MM)
+ */
+export function formatMinutes(minutes) {
+  const safeMinutes = Math.max(0, minutes);
+  const hours = Math.floor(safeMinutes / 60);
+  const mins = safeMinutes % 60;
+
+  return `${hours}h ${mins}m`;
 }
 
 /**
  * Calculate remaining minutes from target
  */
-export function getRemainingMinutes(spentMinutes = 0) {
-  return Math.max(DAILY_TARGET_MINUTES - spentMinutes, 0);
+export function getRemainingMinutes(targetMinutes, usedMinutes) {
+  return Math.max(0, targetMinutes - usedMinutes);
 }
 
 /**
- * Check if daily target completed
+ * Get target summary object
  */
-export function isTargetCompleted(spentMinutes = 0) {
-  return spentMinutes >= DAILY_TARGET_MINUTES;
+export function getTargetSummary(usedMinutes) {
+  const targetMinutes = getDefaultTargetMinutes();
+  const remainingMinutes = getRemainingMinutes(
+    targetMinutes,
+    usedMinutes
+  );
+
+  return {
+    targetMinutes,
+    usedMinutes,
+    remainingMinutes,
+    targetFormatted: formatMinutes(targetMinutes),
+    usedFormatted: formatMinutes(usedMinutes),
+    remainingFormatted: formatMinutes(remainingMinutes),
+  };
 }
