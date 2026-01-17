@@ -1,37 +1,74 @@
 // src/reading/reading.reply.js
 
-import { formatMinutes } from "./reading.summary.js";
+import { formatMinutes, getRemainingMinutes } from "./daily.target.js";
 
 /**
- * Reading start reply
+ * Reply when reading starts
  */
-export function readingStartedReply({ startTime, targetMinutes }) {
+export function buildReadingStartReply({
+  startTime,
+  dailyTargetMinutes,
+}) {
   return (
-    `📚 *Reading STARTED* ✅\n\n` +
-    `🕒 Start Time: ${startTime}\n` +
-    `🎯 Daily Target: ${formatMinutes(targetMinutes)}\n\n` +
-    `🔥 Keep going Doctor 💪🦷\n` +
-    `Consistency beats intensity 🌱`
+`📚 Reading STARTED ✅
+
+🕒 Start Time: ${startTime}
+🎯 Daily Target: ${formatMinutes(dailyTargetMinutes)}
+
+🔥 Keep going Doctor 💪🦷
+Consistency beats intensity.`
   );
 }
 
 /**
- * Reading stop reply
+ * Reply when reading stops
  */
-export function readingStoppedReply({
+export function buildReadingStopReply({
   startTime,
   endTime,
-  sessionMinutes,
+  durationMinutes,
   todayTotalMinutes,
-  remainingMinutes,
+  dailyTargetMinutes,
 }) {
+  const remaining = getRemainingMinutes(
+    dailyTargetMinutes,
+    todayTotalMinutes
+  );
+
   return (
-    `⏸ *Reading STOPPED* ✅\n\n` +
-    `🕒 Start: ${startTime}\n` +
-    `🕒 End: ${endTime}\n` +
-    `⏱ Duration: ${formatMinutes(sessionMinutes)}\n\n` +
-    `📊 Today Total: ${formatMinutes(todayTotalMinutes)}\n` +
-    `🎯 Target Left: ${formatMinutes(remainingMinutes)}\n\n` +
-    `🌟 Great work Doctor! Stay consistent 🦷`
+`⏸ Reading STOPPED ✅
+
+🕒 Start: ${startTime}
+🕒 End: ${endTime}
+⏱ Duration: ${formatMinutes(durationMinutes)}
+
+📊 Today Total: ${formatMinutes(todayTotalMinutes)}
+🎯 Target Left: ${formatMinutes(remaining)}
+
+🌟 Small steps every day lead to big ranks!`
+  );
+}
+
+/**
+ * Reply if reading already active
+ */
+export function buildAlreadyReadingReply(startTime) {
+  return (
+`⚠️ Reading already in progress
+
+🕒 Started at: ${startTime}
+
+📖 Stay focused, Doctor!`
+  );
+}
+
+/**
+ * Reply if stop requested without start
+ */
+export function buildNoActiveReadingReply() {
+  return (
+`⚠️ No active reading session found
+
+📚 Start reading first to track progress.`
   );
 }
