@@ -1,81 +1,42 @@
 // src/reading/reading.session.js
 
 /**
- * Reading Session Manager
- * Handles active reading start / stop
- * Storage: KV (env.READING_KV)
+ * Create a new reading session
  */
-
-/**
- * Generate KV key for user session
- */
-function sessionKey(userId) {
-  return `reading:session:${userId}`;
-}
-
-/**
- * Start reading session
- */
-export async function startReadingSession(env, userId) {
-  const key = sessionKey(userId);
-
-  const existing = await env.READING_KV.get(key, { type: "json" });
-  if (existing) {
-    return {
-      ok: false,
-      reason: "ALREADY_RUNNING",
-      startedAt: existing.startedAt,
-    };
-  }
-
-  const startedAt = Date.now();
-
-  await env.READING_KV.put(
-    key,
-    JSON.stringify({
-      userId,
-      startedAt,
-    })
-  );
+export function startReadingSession() {
+  const now = new Date();
 
   return {
-    ok: true,
-    startedAt,
+    startTimestamp: now.getTime(),
+    startTimeText: formatTime(now),
   };
 }
 
 /**
- * Stop reading session
+ * End an active reading session
  */
-export async function stopReadingSession(env, userId) {
-  const key = sessionKey(userId);
-
-  const session = await env.READING_KV.get(key, { type: "json" });
-  if (!session) {
-    return {
-      ok: false,
-      reason: "NO_ACTIVE_SESSION",
-    };
+export function stopReadingSession(session) {
+  if (!session || !session.startTimestamp) {
+    return null;
   }
 
-  const endedAt = Date.now();
-  const durationMs = endedAt - session.startedAt;
-
-  await env.READING_KV.delete(key);
+  const end = new Date();
+  const durationMs = end.getTime() - session.startTimestamp;
 
   return {
-    ok: true,
-    startedAt: session.startedAt,
-    endedAt,
-    durationMs,
+    startTimeText: session.startTimeText,
+    endTimeText: formatTime(end),
+    durationMinutes: Math.max(Math.floor(durationMs / 60000), 0),
   };
 }
 
 /**
- * Check if reading is active
+ * Format time as HH:MM AM/PM
  */
-export async function isReadingActive(env, userId) {
-  const key = sessionKey(userId);
-  const session = await env.READING_KV.get(key);
-  return !!session;
-  }
+function formatTime(date) {
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
