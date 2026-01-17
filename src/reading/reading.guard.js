@@ -1,27 +1,33 @@
 // src/reading/reading.guard.js
 
 /**
- * Reading Guard
- * Validates reading session state
+ * Check if reading session already exists
  */
-
-/**
- * Check if reading session exists
- */
-export function hasActiveSession(session) {
-  return Boolean(session && session.startTime);
+export function canStartReading(activeSession) {
+  if (activeSession && activeSession.startedAt) {
+    return false;
+  }
+  return true;
 }
 
 /**
- * Ensure reading can be started
+ * Check if reading session can be stopped
  */
-export function canStartReading(session) {
-  return !hasActiveSession(session);
+export function canStopReading(activeSession) {
+  if (!activeSession || !activeSession.startedAt) {
+    return false;
+  }
+  return true;
 }
 
 /**
- * Ensure reading can be stopped
+ * Validate session object structure
  */
-export function canStopReading(session) {
-  return hasActiveSession(session);
+export function isValidSession(session) {
+  if (!session) return false;
+
+  if (!session.startedAt) return false;
+  if (typeof session.startedAt !== "number") return false;
+
+  return true;
 }
