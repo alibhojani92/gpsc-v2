@@ -1,6 +1,12 @@
-name = "gpsc-reading-bot"
+name = "gpsc-dental-bot"
 main = "worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-12-01"
 
 [vars]
 BOT_TOKEN = "8350086915:AAGtzNoCW-zqJEZlnS8cnEiszDFaaWy3KVM"
+ADMIN_ID = "YOUR_TELEGRAM_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gpsc-dental-db"
+database_id = "5d374e7d-2d0f-4c7e-87ae-aa2e2f949515"
