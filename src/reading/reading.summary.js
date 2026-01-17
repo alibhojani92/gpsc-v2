@@ -1,35 +1,44 @@
 // src/reading/reading.summary.js
 
-import { getRemainingMinutes, getDailyTargetMinutes } from "./daily.target.js";
+import { formatMinutes } from "./daily.target.js";
 
 /**
- * Build reading summary object
+ * Safely add minutes to existing total
  */
-export function buildReadingSummary({
-  startTime,
-  endTime,
-  sessionMinutes = 0,
-  todayTotalMinutes = 0,
+export function addMinutes(existingMinutes, newMinutes) {
+  const safeExisting = Number(existingMinutes) || 0;
+  const safeNew = Number(newMinutes) || 0;
+
+  return Math.max(0, safeExisting + safeNew);
+}
+
+/**
+ * Build a normalized daily summary
+ */
+export function buildDailySummary({
+  date,
+  totalMinutes,
+  sessionsCount,
 }) {
-  const targetMinutes = getDailyTargetMinutes();
-  const remainingMinutes = getRemainingMinutes(todayTotalMinutes);
+  const safeTotal = Number(totalMinutes) || 0;
+  const safeSessions = Number(sessionsCount) || 0;
 
   return {
-    startTime,
-    endTime,
-    sessionMinutes,
-    todayTotalMinutes,
-    targetMinutes,
-    remainingMinutes,
-    isTargetCompleted: todayTotalMinutes >= targetMinutes,
+    date,
+    totalMinutes: safeTotal,
+    sessionsCount: safeSessions,
+    totalFormatted: formatMinutes(safeTotal),
   };
 }
 
 /**
- * Format minutes into H M string
+ * Initialize empty daily summary
  */
-export function formatMinutes(minutes = 0) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h}h ${m}m`;
+export function createEmptySummary(date) {
+  return {
+    date,
+    totalMinutes: 0,
+    sessionsCount: 0,
+    totalFormatted: formatMinutes(0),
+  };
 }
