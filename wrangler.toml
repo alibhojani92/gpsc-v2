@@ -1,3 +1,0 @@
-# wrangler.toml
-KV_NAMESPACE = "gpsc_v2_kv"
-DB = "gpsc_v2_db"
